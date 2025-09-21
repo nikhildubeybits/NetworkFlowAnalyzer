@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network SecureFlow Analyzer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #1a202c;
+            --secondary-color: #2d3748;
+            --accent-color: #38a169;
+            --success-color: #38a169;
+            --warning-color: #dd6b20;
+            --danger-color: #e53e3e;
+            --light-color: #edf2f7;
+            --dark-color: #1a202c;
+            --text-color: #e2e8f0;
+            --bg-color: #121826;
+        }
+
+        @keyframes gradient-animation {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        body {
+            background: linear-gradient(-45deg, #121826, #1a202c, #2d3748, #1a202c);
+            background-size: 400% 400%;
+            animation: gradient-animation 15s ease infinite;
+            color: var(--text-color);
+            font-family: 'Roboto Mono', monospace;
+        }
+        
+        .dashboard-header {
+            background: linear-gradient(-45deg, #1a202c, #2d3748, #1a202c, #2d3748);
+            background-size: 400% 400%;
+            animation: gradient-animation 15s ease infinite;
+            color: var(--light-color);
+            padding: 1.5rem 0;
+            border-bottom: 1px solid var(--secondary-color);
+        }
+        
+        .module-card {
+            background: rgba(45, 55, 72, 0.5);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 0 20px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+        }
+
+        .module-card:hover {
+            box-shadow: 0 0 30px rgba(0,0,0,0.4);
+            transform: translateY(-5px);
+        }
+        
+        .module-header {
+            background: rgba(26, 32, 44, 0.7);
+            padding: 1rem 1.5rem;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .module-content {
+            padding: 1.5rem;
+            display: none;
+        }
+        
+        .module-content.active {
+            display: block;
+        }
+        
+        .btn-module {
+            padding: 0.6rem 1.2rem;
+            border-radius: 6px;
+            font-weight: 700;
+            transition: all 0.3s ease;
+            border: none;
+            background-size: 200% auto;
+        }
+
+        .btn-primary {
+            background-image: linear-gradient(to right, #314755 0%, #26a0da  51%, #314755  100%);
+        }
+
+        .btn-danger {
+            background-image: linear-gradient(to right, #e53e3e 0%, #c53030 51%, #e53e3e 100%);
+        }
+
+        .btn-info {
+            background-image: linear-gradient(to right, #00c6ff 0%, #0072ff 51%, #00c6ff 100%);
+        }
+
+        .btn-light {
+            background-image: linear-gradient(to right, #e2e2e2 0%, #f9f9f9 51%, #e2e2e2 100%);
+            color: #333;
+        }
+
+        .btn-module:hover {
+            background-position: right center;
+            transform: scale(1.05);
+        }
+        
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+        }
+        
+        .results-table th {
+            background-color: rgba(26, 32, 44, 0.7);
+            color: var(--light-color);
+            padding: 0.75rem;
+            text-align: left;
+        }
+        
+        .results-table td {
+            padding: 0.75rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .results-table tr:nth-child(even) {
+            background-color: rgba(45, 55, 72, 0.3);
+        }
+        
+        .results-table tr:hover {
+            background-color: rgba(74, 85, 104, 0.5);
+        }
+
+        .packet-details {
+            display: none;
+        }
+
+        .show-details .packet-details {
+            display: table-cell;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-active {
+            background-color: var(--success-color);
+        }
+        
+        .status-inactive {
+            background-color: var(--danger-color);
+        }
+        
+        .news-card {
+            background: rgba(45, 55, 72, 0.5);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-top: 2rem;
+        }
+        
+        .news-item {
+            padding: 1rem;
+            border-left: 4px solid var(--accent-color);
+            margin-bottom: 1rem;
+            background-color: rgba(26, 32, 44, 0.7);
+            border-radius: 4px;
+        }
+        
+        .footer {
+            background: var(--dark-color);
+            color: var(--light-color);
+            padding: 1.5rem 0;
+            margin-top: 3rem;
+            text-align: center;
+            border-top: 1px solid var(--secondary-color);
+        }
+
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="dashboard-header">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h1><i class="bi bi-shield-check"></i> Network SecureFlow Analyzer</h1>
+                    <p class="lead mb-0">Real-time network monitoring and threat detection</p>
+                </div>
+                <div class="col-md-4 text-md-end">
+                    <button class="btn btn-outline-light me-2"><i class="bi bi-question-circle"></i> Help</button>
+                    <button class="btn btn-light"><i class="bi bi-gear"></i> Settings</button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="container" id="main-content">
+        <div class="row">
+            <!-- Packet Capture Module -->
+            <div class="col-12">
+                <div class="module-card">
+                    <div class="module-header" onclick="toggleModule('capture-module')">
+                        <h3><i class="bi bi-collection-play"></i> Packet Capture</h3>
+                        <span class="badge bg-secondary">Hide</span>
+                    </div>
+                    <div id="capture-module" class="module-content active">
+                        <p>Capture and analyze live network traffic to monitor network activity.</p>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-primary btn-module" onclick="startCapture()"><i class="bi bi-play-fill"></i> Start Capture</button>
+                            <button class="btn btn-danger btn-module" onclick="resetCapture()"><i class="bi bi-arrow-counterclockwise"></i> Reset</button>
+                            <button class="btn btn-info btn-module" onclick="printLogs()"><i class="bi bi-file-earmark-text"></i> Print Logs</button>
+                            <button class="btn btn-light btn-module" onclick="toggleDetails()"><i class="bi bi-arrows-angle-expand"></i> Toggle Details</button>
+                        </div>
+                        
+                        <h5 class="mt-4">Captured Packets</h5>
+                        <div class="table-responsive">
+                            <table class="results-table" id="capture-table">
+                                <thead>
+                                    <tr>
+                                        <th>Source</th>
+                                        <th>Destination</th>
+                                        <th>Protocol</th>
+                                        <th class="packet-details">Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-3">
+            <!-- Anomaly Detection Module -->
+            <div class="col-12">
+                <div class="module-card">
+                    <div class="module-header" onclick="toggleModule('anomaly-module')">
+                        <h3><i class="bi bi-exclamation-triangle"></i> Anomaly Detection</h3>
+                        <span class="badge bg-secondary">Hide</span>
+                    </div>
+                    <div id="anomaly-module" class="module-content active">
+                        <p>Analyze network traffic to detect suspicious patterns and potential threats.</p>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-warning btn-module"><i class="bi bi-search"></i> Detect Anomalies</button>
+                        </div>
+                        
+                        <div class="alert alert-success mt-3">
+                            <i class="bi bi-check-circle-fill"></i> No anomalies detected. Your network appears secure.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-3">
+            <!-- Network Scanning Module -->
+            <div class="col-12">
+                <div class="module-card">
+                    <div class="module-header" onclick="toggleModule('scan-module')">
+                        <h3><i class="bi bi-radar"></i> Network Scanning</h3>
+                        <span class="badge bg-secondary">Hide</span>
+                    </div>
+                    <div id="scan-module" class="module-content active">
+                        <p>Scan your network for devices, open ports, and services.</p>
+                        
+                        <div class="mb-3">
+                            <label for="scan-profile" class="form-label">Scan Profile:</label>
+                            <select class="form-select" id="scan-profile">
+                                <option selected>Default Scan</option>
+                                <option>Quick Scan</option>
+                                <option>Comprehensive Scan</option>
+                                <option>Stealth Scan</option>
+                            </select>
+                        </div>
+                        
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-success btn-module"><i class="bi bi-search"></i> Run Scan</button>
+                        </div>
+                        
+                        <h5 class="mt-4">Scan Results</h5>
+                        <div class="mb-2">
+                            <span class="status-indicator status-active"></span>
+                            <strong>Host: 127.0.0.1 - State: up</strong>
+                        </div>
+                        
+                        <div class="table-responsive">
+                            <table class="results-table">
+                                <thead>
+                                    <tr>
+                                        <th>Port</th>
+                                        <th>Service</th>
+                                        <th>Version</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>135</td>
+                                        <td>msrpc</td>
+                                        <td></td>
+                                    </tr>
+                                    <tr>
+                                        <td>445</td>
+                                        <td>microsoft-ds</td>
+                                        <td></td>
+                                    </tr>
+                                    <tr>
+                                        <td>5000</td>
+                                        <td>http</td>
+                                        <td>3.1.3</td>
+                                    </tr>
+                                    <tr>
+                                        <td>6881</td>
+                                        <td>tcpwrapped</td>
+                                        <td></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cyber News Section -->
+        <div class="news-card">
+            <h3><i class="bi bi-newspaper"></i> Latest Cyber News</h3>
+            
+            <div class="news-item">
+                <h5>You should update your Samsung phone ASAP - this zero-day flaw just got patched</h5>
+                <p>Android users are at risk, so install the security update as soon as it binds on your handset.</p>
+                <a href="#" class="btn btn-sm btn-outline-primary">Read More</a>
+            </div>
+            
+            <div class="news-item">
+                <h5>This Microsoft Entra ID Vulnerability Could Have Been Catastrophic</h5>
+                <p>A pair of flaws in Microsoft's Entra ID identity and access management system could have allowed an attacker to gain access to virtually all Azure customer accounts.</p>
+                <a href="#" class="btn btn-sm btn-outline-primary">Read More</a>
+            </div>
+            
+            <div class="news-item">
+                <h5>Telegram Scam: Fake Salary / Phishing Attempt</h5>
+                <p>Telegram Scam: Fake Salary / Phishing Attempt - posted in General Security. I am reporting a scam encountered on Telegram.</p>
+                <a href="#" class="btn btn-sm btn-outline-primary">Read More</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>Developed by Nikhil Dubey (2021wa86865) | Birla Institute of Technology and Science, Pilani</p>
+            <p class="mb-0">Network SecureFlow Analyzer © 2025</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function toggleModule(moduleId) {
+            const module = document.getElementById(moduleId);
+            module.classList.toggle('active');
+        }
+
+        function toggleDetails() {
+            const table = document.getElementById('capture-table');
+            table.classList.toggle('show-details');
+        }
+
+        function resetCapture() {
+            const tableBody = document.querySelector('#capture-table tbody');
+            tableBody.innerHTML = '';
+        }
+
+        function startCapture() {
+            const tableBody = document.querySelector('#capture-table tbody');
+            resetCapture(); // Clear previous results
+
+            const packets = [
+                { src: '192.168.1.10', dest: '8.8.8.8', proto: 'DNS', details: 'Standard query 0x1234 A www.google.com' },
+                { src: '8.8.8.8', dest: '192.168.1.10', proto: 'DNS', details: 'Standard query response 0x1234 A 172.217.16.196' },
+                { src: '192.168.1.10', dest: '172.217.16.196', proto: 'TCP', details: 'SYN, SEQ: 0, Win: 64240, Len: 0' },
+                { src: '172.217.16.196', dest: '192.168.1.10', proto: 'TCP', details: 'SYN, ACK, SEQ: 0, ACK: 1, Win: 65535, Len: 0' },
+                { src: '192.168.1.10', dest: '172.217.16.196', proto: 'TCP', details: 'ACK, SEQ: 1, ACK: 1, Win: 64240, Len: 0' },
+                { src: '192.168.1.10', dest: '172.217.16.196', proto: 'TLSv1.2', details: 'Client Hello' },
+            ];
+
+            packets.forEach(packet => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${packet.src}</td>
+                    <td>${packet.dest}</td>
+                    <td>${packet.proto}</td>
+                    <td class="packet-details">${packet.details}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        function printLogs() {
+            const printContents = document.getElementById('capture-module').innerHTML;
+            const originalContents = document.body.innerHTML;
+            const popupWin = window.open('', '_blank', 'width=800,height=600');
+            popupWin.document.open();
+            popupWin.document.write(
+                `<html>
+                    <head>
+                        <title>Print Packet Capture Logs</title>
+                        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+                        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+                        <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+                        <style>
+                            :root {
+                                --primary-color: #1a202c;
+                                --secondary-color: #2d3748;
+                                --accent-color: #38a169;
+                                --success-color: #38a169;
+                                --warning-color: #dd6b20;
+                                --danger-color: #e53e3e;
+                                --light-color: #edf2f7;
+                                --dark-color: #1a202c;
+                                --text-color: #e2e8f0;
+                                --bg-color: #121826;
+                            }
+                            body {
+                                background-color: var(--bg-color);
+                                color: var(--text-color);
+                                font-family: 'Roboto Mono', monospace;
+                            }
+                            .results-table {
+                                width: 100%;
+                                border-collapse: collapse;
+                                margin-top: 1rem;
+                                font-size: 0.9rem;
+                            }
+                            .results-table th {
+                                background-color: var(--primary-color);
+                                color: var(--light-color);
+                                padding: 0.75rem;
+                                text-align: left;
+                            }
+                            .results-table td {
+                                padding: 0.75rem;
+                                border-bottom: 1px solid var(--primary-color);
+                            }
+                            .results-table tr:nth-child(even) {
+                                background-color: #2d3748;
+                            }
+                            .packet-details { display: table-cell; }
+                        </style>
+                    </head>
+                    <body onload="window.print();window.close()">${printContents}</body>
+                </html>`
+            );
+            popupWin.document.close();
+        }
+        
+        // Simulate loading data
+        document.addEventListener('DOMContentLoaded', function() {
+            // In a real application, you would fetch data from APIs here
+            console.log('Dashboard loaded');
+            startCapture(); // Load initial data
+        });
+    </script>
+
+</body>
+</html>
