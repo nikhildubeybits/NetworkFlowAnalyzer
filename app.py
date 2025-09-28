@@ -1,75 +1,70 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, jsonify, render_template, request
+from modules.packet_capture import start_capture as capture_packets
+from modules.anomaly_detection import detect_anomalies
+from modules.nmap_scan import scan_network
+from modules.news_fetcher import get_cyber_news
 from dotenv import load_dotenv
 import os
-from collections import Counter
-import modules.packet_capture as pc
-import modules.anomaly_detection as ad
-import modules.nmap_scan as nm
-import modules.news_fetcher as nf
 
-# Load environment variables from .env file
-load_dotenv()
+load_dotenv() # Load environment variables from .env file
 
 app = Flask(__name__)
 
-# Get News API key from environment
-news_api_key = os.getenv("NEWS_API_KEY")
-# We will check for the key in the route itself to allow the app to run without it.
+# --- API Routes ---
 
-@app.route('/')
-def home():
-    return render_template('index.html')
+@app.route('/api/capture', methods=['GET'])
+def api_start_capture():
+    """API endpoint to capture network packets."""
+    # You can adjust the interface and count as needed
+    # Ensure the interface 'Wi-Fi' or 'Ethernet' matches your system
+    # A higher packet count is better for anomaly detection.
+    try:
+        packets = capture_packets(interface="Wi-Fi", packet_count=100)
+        return jsonify(packets)
+    except Exception as e:
+        # Return a proper error response if capturing fails
+        return jsonify({"error": str(e)}), 500
 
-@app.route('/api/start_capture')
-def start_capture():
-    packets = pc.start_capture(interface="Wi-Fi", packet_count=50)
-    return jsonify({"packets": packets})
+@app.route('/api/anomalies', methods=['GET'])
+def api_detect_anomalies():
+    """API endpoint to capture packets and detect anomalies."""
+    try:
+        # Capture a fresh batch of packets specifically for analysis
+        packets = capture_packets(interface="Wi-Fi", packet_count=200)
+        anomalies = detect_anomalies(packets)
+        return jsonify(anomalies)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-@app.route('/api/get_anomalies')
-def get_anomalies():
-    anomalies = ad.detect_anomalies()
-    return jsonify(anomalies)
-
-@app.route('/api/nmap_scan')
-def nmap_scan():
-    profile = request.args.get('profile', 'default')
-    scan_results = nm.scan_network('127.0.0.1', profile=profile)
-    return jsonify(scan_results)
-
-@app.route('/api/anomaly_summary')
-def anomaly_summary():
-    anomalies = ad.detect_anomalies()
-    severity_counts = Counter(a['severity'] for a in anomalies)
-    ip_counts = Counter(a['source_ip'] for a in anomalies)
-    return jsonify({
-        'severity_counts': severity_counts,
-        'ip_counts': ip_counts
-    })
-
-@app.route('/api/manage_ip', methods=['POST'])
-def manage_ip():
-    data = request.json
-    ip = data.get("ip")
-    action = data.get("action")
-
-    if not ip or not action:
-        return jsonify({"status": "error", "message": "Missing IP or action"}), 400
-
-    if action == "block":
-        pc.blocked_ips.add(ip)
-        return jsonify({"status": "success", "message": f"IP {ip} added to blocklist."})
-    elif action == "whitelist":
-        ad.whitelisted_ips.add(ip)
-        return jsonify({"status": "success", "message": f"IP {ip} added to whitelist."})
+@app.route('/api/scan', methods=['GET'])
+def api_run_scan():
+    """API endpoint to run a network scan."""
+    # For now, target is hardcoded to localhost, but we get profile from the request
+    target = request.args.get('target', '127.0.0.1')
+    profile_name = request.args.get('profile', 'Default Scan')
     
-    return jsonify({"status": "error", "message": "Invalid action"}), 400
+    # Convert frontend profile name ('Default Scan') to backend key ('default')
+    profile_key = profile_name.split(' ')[0].lower()
 
-@app.route('/api/get_news')
-def get_news():
-    news_data = nf.get_cyber_news(news_api_key)
+    try:
+        results = scan_network(target=target, profile=profile_key)
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/news', methods=['GET'])
+def api_get_news():
+    """API endpoint to fetch cybersecurity news."""
+    api_key = os.getenv("NEWS_API_KEY")
+    news_data = get_cyber_news(api_key)
     return jsonify(news_data)
 
+# --- Frontend Route ---
 
+@app.route('/')
+def index():
+    """Serves the main dashboard page."""
+    return render_template('index.html')
 
 if __name__ == '__main__':
     app.run(debug=True)

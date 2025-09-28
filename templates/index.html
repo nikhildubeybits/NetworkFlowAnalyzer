@@ -255,11 +255,11 @@
                     <div id="anomaly-module" class="module-content active">
                         <p>Analyze network traffic to detect suspicious patterns and potential threats.</p>
                         <div class="d-flex gap-2">
-                            <button class="btn btn-warning btn-module"><i class="bi bi-search"></i> Detect Anomalies</button>
+                            <button class="btn btn-warning btn-module" onclick="detectAnomalies()"><i class="bi bi-search"></i> Detect Anomalies</button>
                         </div>
                         
-                        <div class="alert alert-success mt-3">
-                            <i class="bi bi-check-circle-fill"></i> No anomalies detected. Your network appears secure.
+                        <div id="anomaly-results" class="alert alert-info mt-3">
+                            <i class="bi bi-info-circle-fill"></i> Click "Detect Anomalies" to start scanning for potential threats.
                         </div>
                     </div>
                 </div>
@@ -288,17 +288,16 @@
                         </div>
                         
                         <div class="d-flex gap-2">
-                            <button class="btn btn-success btn-module"><i class="bi bi-search"></i> Run Scan</button>
+                            <button class="btn btn-success btn-module" onclick="runScan()"><i class="bi bi-search"></i> Run Scan</button>
                         </div>
                         
                         <h5 class="mt-4">Scan Results</h5>
-                        <div class="mb-2">
-                            <span class="status-indicator status-active"></span>
-                            <strong>Host: 127.0.0.1 - State: up</strong>
+                        <div id="scan-host-info" class="mb-2">
+                            <!-- Host status will be populated by JS -->
                         </div>
                         
                         <div class="table-responsive">
-                            <table class="results-table">
+                            <table class="results-table" id="scan-results-table">
                                 <thead>
                                     <tr>
                                         <th>Port</th>
@@ -306,26 +305,9 @@
                                         <th>Version</th>
                                     </tr>
                                 </thead>
-                                <tbody>
+                                <tbody id="scan-results-body">
                                     <tr>
-                                        <td>135</td>
-                                        <td>msrpc</td>
-                                        <td></td>
-                                    </tr>
-                                    <tr>
-                                        <td>445</td>
-                                        <td>microsoft-ds</td>
-                                        <td></td>
-                                    </tr>
-                                    <tr>
-                                        <td>5000</td>
-                                        <td>http</td>
-                                        <td>3.1.3</td>
-                                    </tr>
-                                    <tr>
-                                        <td>6881</td>
-                                        <td>tcpwrapped</td>
-                                        <td></td>
+                                        <td colspan="3">Click "Run Scan" to see results.</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -338,23 +320,8 @@
         <!-- Cyber News Section -->
         <div class="news-card">
             <h3><i class="bi bi-newspaper"></i> Latest Cyber News</h3>
-            
-            <div class="news-item">
-                <h5>You should update your Samsung phone ASAP - this zero-day flaw just got patched</h5>
-                <p>Android users are at risk, so install the security update as soon as it binds on your handset.</p>
-                <a href="#" class="btn btn-sm btn-outline-primary">Read More</a>
-            </div>
-            
-            <div class="news-item">
-                <h5>This Microsoft Entra ID Vulnerability Could Have Been Catastrophic</h5>
-                <p>A pair of flaws in Microsoft's Entra ID identity and access management system could have allowed an attacker to gain access to virtually all Azure customer accounts.</p>
-                <a href="#" class="btn btn-sm btn-outline-primary">Read More</a>
-            </div>
-            
-            <div class="news-item">
-                <h5>Telegram Scam: Fake Salary / Phishing Attempt</h5>
-                <p>Telegram Scam: Fake Salary / Phishing Attempt - posted in General Security. I am reporting a scam encountered on Telegram.</p>
-                <a href="#" class="btn btn-sm btn-outline-primary">Read More</a>
+            <div id="news-container">
+                <!-- News articles will be loaded here by JavaScript -->
             </div>
         </div>
     </div>
@@ -371,7 +338,11 @@
     <script>
         function toggleModule(moduleId) {
             const module = document.getElementById(moduleId);
-            module.classList.toggle('active');
+            const isActive = module.classList.toggle('active');
+            const badge = module.previousElementSibling.querySelector('.badge');
+            if (badge) {
+                badge.textContent = isActive ? 'Hide' : 'Show';
+            }
         }
 
         function toggleDetails() {
@@ -384,94 +355,209 @@
             tableBody.innerHTML = '';
         }
 
-        function startCapture() {
+        async function startCapture() {
             const tableBody = document.querySelector('#capture-table tbody');
+            const startButton = document.querySelector('button[onclick="startCapture()"]');
+            
+            // Provide user feedback during capture
+            startButton.disabled = true;
+            startButton.innerHTML = '<i class="bi bi-hourglass-split"></i> Capturing...';
+            
             resetCapture(); // Clear previous results
 
-            const packets = [
-                { src: '192.168.1.10', dest: '8.8.8.8', proto: 'DNS', details: 'Standard query 0x1234 A www.google.com' },
-                { src: '8.8.8.8', dest: '192.168.1.10', proto: 'DNS', details: 'Standard query response 0x1234 A 172.217.16.196' },
-                { src: '192.168.1.10', dest: '172.217.16.196', proto: 'TCP', details: 'SYN, SEQ: 0, Win: 64240, Len: 0' },
-                { src: '172.217.16.196', dest: '192.168.1.10', proto: 'TCP', details: 'SYN, ACK, SEQ: 0, ACK: 1, Win: 65535, Len: 0' },
-                { src: '192.168.1.10', dest: '172.217.16.196', proto: 'TCP', details: 'ACK, SEQ: 1, ACK: 1, Win: 64240, Len: 0' },
-                { src: '192.168.1.10', dest: '172.217.16.196', proto: 'TLSv1.2', details: 'Client Hello' },
-            ];
+            try {
+                const response = await fetch('/api/capture');
+                if (!response.ok) {
+                    throw new Error(`Network response was not ok: ${response.statusText}`);
+                }
+                const packets = await response.json();
 
-            packets.forEach(packet => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${packet.src}</td>
-                    <td>${packet.dest}</td>
-                    <td>${packet.proto}</td>
-                    <td class="packet-details">${packet.details}</td>
-                `;
-                tableBody.appendChild(row);
-            });
+                if (packets.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="4">No packets captured. Ensure the server is running with correct permissions and check the network interface.</td></tr>';
+                } else {
+                    packets.forEach(packet => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `<td>${packet.src}</td><td>${packet.dest}</td><td>${packet.proto}</td><td class="packet-details">${packet.details}</td>`;
+                        tableBody.appendChild(row);
+                    });
+                }
+            } catch (error) {
+                console.error("Failed to fetch packets:", error);
+                tableBody.innerHTML = `<tr><td colspan="4" class="text-danger">Error: Could not connect to the backend. ${error.message}</td></tr>`;
+            } finally {
+                // Restore button state
+                startButton.disabled = false;
+                startButton.innerHTML = '<i class="bi bi-play-fill"></i> Start Capture';
+            }
         }
 
         function printLogs() {
-            const printContents = document.getElementById('capture-module').innerHTML;
-            const originalContents = document.body.innerHTML;
+            const table = document.getElementById('capture-table').cloneNode(true);
+            table.classList.add('show-details'); // Ensure details are visible for printing
+
             const popupWin = window.open('', '_blank', 'width=800,height=600');
             popupWin.document.open();
-            popupWin.document.write(
-                `<html>
+            popupWin.document.write(`
+                <html>
                     <head>
                         <title>Print Packet Capture Logs</title>
-                        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-                        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-                        <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
                         <style>
-                            :root {
-                                --primary-color: #1a202c;
-                                --secondary-color: #2d3748;
-                                --accent-color: #38a169;
-                                --success-color: #38a169;
-                                --warning-color: #dd6b20;
-                                --danger-color: #e53e3e;
-                                --light-color: #edf2f7;
-                                --dark-color: #1a202c;
-                                --text-color: #e2e8f0;
-                                --bg-color: #121826;
-                            }
-                            body {
-                                background-color: var(--bg-color);
-                                color: var(--text-color);
-                                font-family: 'Roboto Mono', monospace;
-                            }
-                            .results-table {
-                                width: 100%;
-                                border-collapse: collapse;
-                                margin-top: 1rem;
-                                font-size: 0.9rem;
-                            }
-                            .results-table th {
-                                background-color: var(--primary-color);
-                                color: var(--light-color);
-                                padding: 0.75rem;
-                                text-align: left;
-                            }
-                            .results-table td {
-                                padding: 0.75rem;
-                                border-bottom: 1px solid var(--primary-color);
-                            }
-                            .results-table tr:nth-child(even) {
-                                background-color: #2d3748;
-                            }
-                            .packet-details { display: table-cell; }
+                            body { font-family: 'Roboto Mono', monospace; background-color: #fff; color: #000; }
+                            table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+                            th, td { padding: 8px; border: 1px solid #ddd; text-align: left; }
+                            th { background-color: #f2f2f2; }
+                            .packet-details { display: table-cell !important; }
                         </style>
                     </head>
-                    <body onload="window.print();window.close()">${printContents}</body>
-                </html>`
-            );
+                    <body onload="window.print();window.close()">
+                        <h2>Packet Capture Logs</h2>
+                        ${table.outerHTML}
+                    </body>
+                </html>`);
             popupWin.document.close();
         }
         
-        // Simulate loading data
+        async function detectAnomalies() {
+            const button = document.querySelector('button[onclick="detectAnomalies()"]');
+            const resultDiv = document.getElementById('anomaly-results');
+
+            button.disabled = true;
+            button.innerHTML = '<i class="bi bi-hourglass-split"></i> Analyzing...';
+
+            try {
+                const response = await fetch('/api/anomalies');
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.statusText}`);
+                }
+                const anomalies = await response.json();
+
+                if (anomalies.length > 0) {
+                    resultDiv.className = 'alert alert-danger mt-3';
+                    let html = '<strong><i class="bi bi-exclamation-octagon-fill"></i> Anomalies Detected!</strong><ul>';
+                    anomalies.forEach(anomaly => {
+                        html += `<li><strong>${anomaly.type} (${anomaly.severity}):</strong> ${anomaly.description} <br><small class="text-warning"><strong>Recommendation:</strong> <em>${anomaly.recommendation}</em></small></li>`;
+                    });
+                    html += '</ul>';
+                    resultDiv.innerHTML = html;
+                } else {
+                    resultDiv.className = 'alert alert-success mt-3';
+                    resultDiv.innerHTML = '<i class="bi bi-check-circle-fill"></i> No anomalies detected. Your network appears secure.';
+                }
+            } catch (error) {
+                console.error("Failed to detect anomalies:", error);
+                resultDiv.className = 'alert alert-warning mt-3';
+                resultDiv.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i> Could not perform analysis. ${error.message}`;
+            } finally {
+                resultDiv.style.display = 'block';
+                button.disabled = false;
+                button.innerHTML = '<i class="bi bi-search"></i> Detect Anomalies';
+            }
+        }
+
+        async function runScan() {
+            const button = document.querySelector('#scan-module .btn-success');
+            const tableBody = document.getElementById('scan-results-body');
+            const hostInfoDiv = document.getElementById('scan-host-info');
+            const profileSelect = document.getElementById('scan-profile');
+            const selectedProfile = profileSelect.value;
+
+            button.disabled = true;
+            button.innerHTML = '<i class="bi bi-hourglass-split"></i> Scanning...';
+            tableBody.innerHTML = '<tr><td colspan="3">Scanning in progress... This may take a moment.</td></tr>';
+            hostInfoDiv.innerHTML = ''; // Clear previous host info
+
+            try {
+                const response = await fetch(`/api/scan?profile=${encodeURIComponent(selectedProfile)}`);
+                
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.statusText}`);
+                }
+
+                const results = await response.json();
+                tableBody.innerHTML = ''; // Clear "scanning" message
+
+                if (results.length === 0 || (results[0] && results[0].error)) {
+                    const errorMessage = results[0]?.error || "No hosts found or an error occurred during the scan.";
+                    // Provide a more user-friendly message if nmap is not found
+                    if (errorMessage.includes("nmap program was not found in path")) {
+                         tableBody.innerHTML = `<tr><td colspan="3" class="text-danger"><strong>Error:</strong> Nmap is not installed or not in the system's PATH. Please install Nmap to use this feature.</td></tr>`;
+                    } else {
+                         tableBody.innerHTML = `<tr><td colspan="3" class="text-danger"><strong>Error:</strong> ${errorMessage}</td></tr>`;
+                    }
+                    hostInfoDiv.innerHTML = `<span class="status-indicator status-inactive"></span> <strong>Scan Failed</strong>`;
+                } else {
+                    // Assuming we only scan one host at a time as per the UI
+                    const hostData = results[0];
+                    const statusClass = hostData.state === 'up' ? 'status-active' : 'status-inactive';
+                    hostInfoDiv.innerHTML = `<span class="status-indicator ${statusClass}"></span> <strong>Host: ${hostData.ip} - State: ${hostData.state}</strong>`;
+
+                    if (hostData.open_ports && hostData.open_ports.length > 0) {
+                        hostData.open_ports.forEach(p => {
+                            const row = document.createElement('tr');
+                            row.innerHTML = `<td>${p.port}</td><td>${p.service}</td><td>${p.version}</td>`;
+                            tableBody.appendChild(row);
+                        });
+                    } else {
+                        tableBody.innerHTML = '<tr><td colspan="3">No open ports found on the target host.</td></tr>';
+                    }
+                }
+
+            } catch (error) {
+                console.error("Failed to run scan:", error);
+                tableBody.innerHTML = `<tr><td colspan="3" class="text-danger">Error: Could not connect to the backend to run scan. ${error.message}</td></tr>`;
+                hostInfoDiv.innerHTML = `<span class="status-indicator status-inactive"></span> <strong>Scan Failed</strong>`;
+            } finally {
+                button.disabled = false;
+                button.innerHTML = '<i class="bi bi-search"></i> Run Scan';
+            }
+        }
+
+        async function fetchNews() {
+            const newsContainer = document.getElementById('news-container');
+            newsContainer.innerHTML = '<p>Loading latest news...</p>';
+
+            try {
+                const response = await fetch('/api/news');
+                if (!response.ok) {
+                    throw new Error(`Network response was not ok: ${response.statusText}`);
+                }
+                const newsData = await response.json();
+
+                newsContainer.innerHTML = ''; // Clear loading message
+
+                if (newsData.error) {
+                    newsContainer.innerHTML = `<div class="alert alert-warning">${newsData.error}</div>`;
+                    return;
+                }
+
+                if (newsData.articles && newsData.articles.length > 0) {
+                    newsData.articles.forEach(article => {
+                        const newsItem = document.createElement('div');
+                        newsItem.className = 'news-item';
+                        // Use target="_blank" to open links in a new tab
+                        newsItem.innerHTML = `
+                            <h5>${article.title}</h5>
+                            <p>${article.description || 'No description available.'}</p>
+                            <a href="${article.url}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary">Read More</a>
+                        `;
+                        newsContainer.appendChild(newsItem);
+                    });
+                } else {
+                    newsContainer.innerHTML = '<p>No news articles found.</p>';
+                }
+
+            } catch (error) {
+                console.error("Failed to fetch news:", error);
+                newsContainer.innerHTML = `<div class="alert alert-danger">Error: Could not fetch news. ${error.message}</div>`;
+            }
+        }
+
+        // --- INITIALIZATION ---
+
         document.addEventListener('DOMContentLoaded', function() {
-            // In a real application, you would fetch data from APIs here
-            console.log('Dashboard loaded');
-            startCapture(); // Load initial data
+            console.log('Dashboard loaded. Performing initial capture.');
+            startCapture(); // Perform initial capture on load
+            fetchNews(); // Fetch latest news on load
         });
     </script>
 
