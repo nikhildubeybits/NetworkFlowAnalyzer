@@ -7,6 +7,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
             --primary-color: #1a202c;
@@ -198,8 +199,7 @@
                     <p class="lead mb-0">Real-time network monitoring and threat detection</p>
                 </div>
                 <div class="col-md-4 text-md-end">
-                    <button class="btn btn-outline-light me-2"><i class="bi bi-question-circle"></i> Help</button>
-                    <button class="btn btn-light"><i class="bi bi-gear"></i> Settings</button>
+                    <a href="/schedule" class="btn btn-light"><i class="bi bi-clock-history"></i> Schedule Capture</a>
                 </div>
             </div>
         </div>
@@ -217,13 +217,15 @@
                     </div>
                     <div id="capture-module" class="module-content active">
                         <p>Capture and analyze live network traffic to monitor network activity.</p>
-                        <div class="d-flex gap-2">
-                            <button class="btn btn-primary btn-module" onclick="startCapture()"><i class="bi bi-play-fill"></i> Start Capture</button>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button id="start-capture-btn" class="btn btn-primary btn-module" onclick="startCapture()"><i class="bi bi-play-fill"></i> Start Capture</button>
                             <button class="btn btn-danger btn-module" onclick="resetCapture()"><i class="bi bi-arrow-counterclockwise"></i> Reset</button>
                             <button class="btn btn-info btn-module" onclick="printLogs()"><i class="bi bi-file-earmark-text"></i> Print Logs</button>
                             <button class="btn btn-light btn-module" onclick="toggleDetails()"><i class="bi bi-arrows-angle-expand"></i> Toggle Details</button>
+                            <button id="graph-toggle-btn" class="btn btn-secondary btn-module" onclick="toggleGraph()"><i class="bi bi-bar-chart-line"></i> Show Graph</button>
+                            <button id="ai-help-btn" class="btn btn-primary btn-module" onclick="getAiHelp()"><i class="bi bi-robot"></i> Analyze with AI</button>
                         </div>
-                        
+
                         <h5 class="mt-4">Captured Packets</h5>
                         <div class="table-responsive">
                             <table class="results-table" id="capture-table">
@@ -238,6 +240,12 @@
                                 <tbody>
                                 </tbody>
                             </table>
+                        </div>
+
+                        <!-- IP Address Distribution Chart (Initially Hidden) -->
+                        <div id="ip-chart-container" class="mt-4" style="display: none;">
+                            <h5 class="mb-3">Source IP Traffic Distribution</h5>
+                            <div style="position: relative; height:400px"><canvas id="ipDistributionChart"></canvas></div>
                         </div>
                     </div>
                 </div>
@@ -254,8 +262,9 @@
                     </div>
                     <div id="anomaly-module" class="module-content active">
                         <p>Analyze network traffic to detect suspicious patterns and potential threats.</p>
-                        <div class="d-flex gap-2">
+                        <div class="d-flex gap-2 flex-wrap">
                             <button class="btn btn-warning btn-module" onclick="detectAnomalies()"><i class="bi bi-search"></i> Detect Anomalies</button>
+                            <button id="ai-anomaly-btn" class="btn btn-primary btn-module" onclick="getAiHelpForAnomalies()" disabled><i class="bi bi-robot"></i> Analyze with AI</button>
                         </div>
                         
                         <div id="anomaly-results" class="alert alert-info mt-3">
@@ -287,8 +296,9 @@
                             </select>
                         </div>
                         
-                        <div class="d-flex gap-2">
+                        <div class="d-flex gap-2 flex-wrap">
                             <button class="btn btn-success btn-module" onclick="runScan()"><i class="bi bi-search"></i> Run Scan</button>
+                            <button id="ai-scan-btn" class="btn btn-primary btn-module" onclick="getAiHelpForScan()" disabled><i class="bi bi-robot"></i> Analyze with AI</button>
                         </div>
                         
                         <h5 class="mt-4">Scan Results</h5>
@@ -326,6 +336,56 @@
         </div>
     </div>
 
+    <!-- Shodan Info Modal -->
+    <div class="modal fade" id="shodanModal" tabindex="-1" aria-labelledby="shodanModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content" style="background: var(--secondary-color); border: 1px solid rgba(255,255,255,0.2);">
+                <div class="modal-header" style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+                    <h5 class="modal-title" id="shodanModalLabel"><i class="bi bi-info-circle"></i> Shodan IP Information</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="shodanModalBody">
+                    <!-- Content will be loaded by JavaScript -->
+                    <div class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Fetching data from Shodan...</p>
+                    </div>
+                </div>
+                <div class="modal-footer" style="border-top: 1px solid rgba(255,255,255,0.2);">
+                    <p class="me-auto text-muted small">Data provided by Shodan</p>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Help Modal -->
+    <div class="modal fade" id="aiHelpModal" tabindex="-1" aria-labelledby="aiHelpModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content" style="background: var(--secondary-color); border: 1px solid rgba(255,255,255,0.2);">
+                <div class="modal-header" style="border-bottom: 1px solid rgba(255,255,255,0.2);">
+                    <h5 class="modal-title" id="aiHelpModalLabel"><i class="bi bi-robot"></i> AI Log Analysis</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="aiHelpModalBody">
+                    <!-- AI response will be loaded here -->
+                    <div class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Analyzing logs with AI...</p>
+                    </div>
+                </div>
+                <div class="modal-footer" style="border-top: 1px solid rgba(255,255,255,0.2);">
+                    <p class="me-auto text-muted small">Analysis provided by AI. Always verify critical information.</p>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Footer -->
     <footer class="footer">
         <div class="container">
@@ -336,6 +396,9 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        let ipChartInstance = null; // To hold the chart instance
+        let isCapturing = false; // Global state to prevent multiple captures
+
         function toggleModule(moduleId) {
             const module = document.getElementById(moduleId);
             const isActive = module.classList.toggle('active');
@@ -353,12 +416,27 @@
         function resetCapture() {
             const tableBody = document.querySelector('#capture-table tbody');
             tableBody.innerHTML = '';
+            // Also hide and reset the chart
+            const chartContainer = document.getElementById('ip-chart-container');
+            chartContainer.style.display = 'none';
+            const graphBtn = document.getElementById('graph-toggle-btn');
+            graphBtn.innerHTML = '<i class="bi bi-bar-chart-line"></i> Show Graph';
+            if (ipChartInstance) {
+                ipChartInstance.destroy();
+                ipChartInstance = null;
+            }
         }
 
         async function startCapture() {
             const tableBody = document.querySelector('#capture-table tbody');
-            const startButton = document.querySelector('button[onclick="startCapture()"]');
+            const startButton = document.getElementById('start-capture-btn');
             
+            if (isCapturing) {
+                alert("A capture is already in progress.");
+                return;
+            }
+            isCapturing = true;
+
             // Provide user feedback during capture
             startButton.disabled = true;
             startButton.innerHTML = '<i class="bi bi-hourglass-split"></i> Capturing...';
@@ -380,6 +458,9 @@
                         row.innerHTML = `<td>${packet.src}</td><td>${packet.dest}</td><td>${packet.proto}</td><td class="packet-details">${packet.details}</td>`;
                         tableBody.appendChild(row);
                     });
+
+                    // Update the IP distribution chart with the new data
+                    updateIpChart(packets);
                 }
             } catch (error) {
                 console.error("Failed to fetch packets:", error);
@@ -388,7 +469,103 @@
                 // Restore button state
                 startButton.disabled = false;
                 startButton.innerHTML = '<i class="bi bi-play-fill"></i> Start Capture';
+                isCapturing = false;
             }
+        }
+
+        function updateIpChart(packets) {
+            const ipCounts = packets.reduce((acc, packet) => {
+                const srcIp = packet.src;
+                if (srcIp && srcIp !== 'N/A') {
+                    acc[srcIp] = (acc[srcIp] || 0) + 1;
+                }
+                return acc;
+            }, {});
+
+            // Sort IPs by count in descending order for a more meaningful bar chart
+            const sortedIps = Object.entries(ipCounts).sort(([,a],[,b]) => b-a);
+            
+            const labels = sortedIps.map(item => item[0]);
+            const data = sortedIps.map(item => item[1]);
+
+            const ctx = document.getElementById('ipDistributionChart').getContext('2d');
+
+            // Destroy the previous chart instance if it exists to prevent conflicts
+            if (ipChartInstance) {
+                ipChartInstance.destroy();
+            }
+
+            if (labels.length === 0) {
+                // Hide the chart container if there's no data
+                document.getElementById('ip-chart-container').style.display = 'none';
+                document.getElementById('graph-toggle-btn').innerHTML = '<i class="bi bi-bar-chart-line"></i> Show Graph';
+
+                // If there's no data, clear the canvas and show a message
+                ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+                ctx.fillStyle = 'rgba(226, 232, 240, 0.8)';
+                ctx.textAlign = 'center';
+                ctx.font = "16px 'Roboto Mono'";
+                ctx.fillText('No IP data to display. Run a capture.', ctx.canvas.width / 2, ctx.canvas.height / 2);
+                return;
+            }
+
+            ipChartInstance = new Chart(ctx, {
+                type: 'bar', // Changed to a bar chart for better readability
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Packet Count',
+                        data: data,
+                        backgroundColor: [ // A nice color palette
+                            'rgba(54, 162, 235, 0.7)',
+                            'rgba(255, 99, 132, 0.7)',
+                            'rgba(255, 206, 86, 0.7)',
+                            'rgba(75, 192, 192, 0.7)',
+                            'rgba(153, 102, 255, 0.7)',
+                            'rgba(255, 159, 64, 0.7)',
+                            'rgba(99, 255, 132, 0.7)'
+                        ],
+                        borderColor: 'rgba(255, 255, 255, 0.2)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y', // Makes the bar chart horizontal
+                    scales: {
+                        x: {
+                            ticks: { color: 'rgba(226, 232, 240, 0.8)' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        },
+                        y: {
+                            ticks: { color: 'rgba(226, 232, 240, 0.8)' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }, // Legend is redundant for a single dataset
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) { label += ': '; }
+                                    if (context.parsed.x !== null) { label += context.parsed.x; }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function toggleGraph() {
+            const chartContainer = document.getElementById('ip-chart-container');
+            const button = document.getElementById('graph-toggle-btn');
+            const isHidden = chartContainer.style.display === 'none';
+            chartContainer.style.display = isHidden ? 'block' : 'none';
+            button.innerHTML = isHidden ? '<i class="bi bi-bar-chart-line"></i> Hide Graph' : '<i class="bi bi-bar-chart-line"></i> Show Graph';
         }
 
         function printLogs() {
@@ -422,6 +599,7 @@
             const resultDiv = document.getElementById('anomaly-results');
 
             button.disabled = true;
+            document.getElementById('ai-anomaly-btn').disabled = true;
             button.innerHTML = '<i class="bi bi-hourglass-split"></i> Analyzing...';
 
             try {
@@ -434,8 +612,10 @@
                 if (anomalies.length > 0) {
                     resultDiv.className = 'alert alert-danger mt-3';
                     let html = '<strong><i class="bi bi-exclamation-octagon-fill"></i> Anomalies Detected!</strong><ul>';
-                    anomalies.forEach(anomaly => {
-                        html += `<li><strong>${anomaly.type} (${anomaly.severity}):</strong> ${anomaly.description} <br><small class="text-warning"><strong>Recommendation:</strong> <em>${anomaly.recommendation}</em></small></li>`;
+                    anomalies.forEach(anomaly => { // Make IP clickable for Shodan lookup
+                        html += `<li><strong>${anomaly.type} (${anomaly.severity}):</strong> ${anomaly.description.replace(anomaly.source_ip, `<a href="#" onclick="showShodanInfo('${anomaly.source_ip}')" class="alert-link">${anomaly.source_ip}</a>`)} <br>
+                                 <small class="text-warning"><strong>Recommendation:</strong> <em>${anomaly.recommendation}</em></small>
+                                 <button class="btn btn-sm btn-outline-light ms-2" onclick="blockIp('${anomaly.source_ip}', this)">Block IP</button></li>`;
                     });
                     html += '</ul>';
                     resultDiv.innerHTML = html;
@@ -443,6 +623,7 @@
                     resultDiv.className = 'alert alert-success mt-3';
                     resultDiv.innerHTML = '<i class="bi bi-check-circle-fill"></i> No anomalies detected. Your network appears secure.';
                 }
+                document.getElementById('ai-anomaly-btn').disabled = false; // Enable AI button on success
             } catch (error) {
                 console.error("Failed to detect anomalies:", error);
                 resultDiv.className = 'alert alert-warning mt-3';
@@ -454,12 +635,71 @@
             }
         }
 
+        async function blockIp(ip, buttonElement) {
+            if (!confirm(`Are you sure you want to add ${ip} to the blocklist? This will prevent it from triggering future anomaly alerts.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/blocklist/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ip: ip })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    alert(result.message); // Or use a more elegant notification system
+                    buttonElement.textContent = 'Blocked';
+                    buttonElement.disabled = true;
+                } else {
+                    throw new Error(result.error || 'Failed to block IP');
+                }
+            } catch (error) {
+                console.error('Block IP Error:', error);
+                alert(`Error: ${error.message}`);
+            }
+        }
+
+        async function showShodanInfo(ip) {
+            const modal = new bootstrap.Modal(document.getElementById('shodanModal'));
+            const modalBody = document.getElementById('shodanModalBody');
+            
+            // Show loading state
+            modalBody.innerHTML = `<div class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">Fetching data for ${ip} from Shodan...</p></div>`;
+            modal.show();
+
+            try {
+                const response = await fetch(`/api/shodan/${ip}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    modalBody.innerHTML = `<div class="alert alert-warning">${data.error}</div>`;
+                } else {
+                    let portsList = 'None';
+                    if (data.ports && data.ports.length > 0) {
+                        portsList = `<ul>${data.ports.map(p => `<li>${p}</li>`).join('')}</ul>`;
+                    }
+                    modalBody.innerHTML = `
+                        <p><strong>IP Address:</strong> ${data.ip}</p>
+                        <p><strong>Organization:</strong> ${data.organization}</p>
+                        <p><strong>Operating System:</strong> ${data.os}</p>
+                        <p><strong>Last Seen:</strong> ${new Date(data.last_update).toLocaleString()}</p>
+                        <h6>Open Ports:</h6>
+                        ${portsList}
+                    `;
+                }
+            } catch (error) {
+                modalBody.innerHTML = `<div class="alert alert-danger">Failed to fetch Shodan data. ${error.message}</div>`;
+            }
+        }
+
         async function runScan() {
             const button = document.querySelector('#scan-module .btn-success');
             const tableBody = document.getElementById('scan-results-body');
             const hostInfoDiv = document.getElementById('scan-host-info');
             const profileSelect = document.getElementById('scan-profile');
             const selectedProfile = profileSelect.value;
+            const aiScanBtn = document.getElementById('ai-scan-btn');
 
             button.disabled = true;
             button.innerHTML = '<i class="bi bi-hourglass-split"></i> Scanning...';
@@ -500,6 +740,7 @@
                     } else {
                         tableBody.innerHTML = '<tr><td colspan="3">No open ports found on the target host.</td></tr>';
                     }
+                    aiScanBtn.disabled = false; // Enable AI button on success
                 }
 
             } catch (error) {
@@ -508,6 +749,7 @@
                 hostInfoDiv.innerHTML = `<span class="status-indicator status-inactive"></span> <strong>Scan Failed</strong>`;
             } finally {
                 button.disabled = false;
+                if (tableBody.textContent.includes("Error:")) aiScanBtn.disabled = true;
                 button.innerHTML = '<i class="bi bi-search"></i> Run Scan';
             }
         }
@@ -549,6 +791,127 @@
             } catch (error) {
                 console.error("Failed to fetch news:", error);
                 newsContainer.innerHTML = `<div class="alert alert-danger">Error: Could not fetch news. ${error.message}</div>`;
+            }
+        }
+
+        async function getAiHelp() {
+            const modal = new bootstrap.Modal(document.getElementById('aiHelpModal'));
+            const modalBody = document.getElementById('aiHelpModalBody');
+            const tableRows = document.querySelectorAll('#capture-table tbody tr');
+
+            if (tableRows.length === 0 || (tableRows.length === 1 && tableRows[0].textContent.includes("No packets captured"))) {
+                alert("There are no captured logs to analyze. Please start a capture first.");
+                return;
+            }
+
+            // Show loading state in modal
+            modalBody.innerHTML = `<div class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">Preparing logs and asking AI for an explanation...</p></div>`;
+            modal.show();
+
+            // Extract log data from the table into a CSV-like string
+            let logData = "Source,Destination,Protocol,Details\n";
+            tableRows.forEach(row => {
+                const cells = row.querySelectorAll('td');
+                if (cells.length > 0) {
+                    // Extract text content from each cell and join them
+                    const rowData = Array.from(cells).map(cell => `"${cell.textContent.trim()}"`).join(',');
+                    logData += rowData + "\n";
+                }
+            });
+
+            try {
+                const response = await fetch('/api/ai-help', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ logs: logData })
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'The AI assistant failed to respond.');
+                }
+
+                // Replace newlines from the AI response with <br> tags for proper HTML rendering
+                modalBody.innerHTML = result.explanation.replace(/\n/g, '<br>');
+
+            } catch (error) {
+                console.error("AI Help Error:", error);
+                modalBody.innerHTML = `<div class="alert alert-danger"><strong>Error:</strong> Could not get analysis from the AI assistant. ${error.message}</div>`;
+            }
+        }
+
+        async function getAiHelpForAnomalies() {
+            const modal = new bootstrap.Modal(document.getElementById('aiHelpModal'));
+            const modalBody = document.getElementById('aiHelpModalBody');
+            const resultsDiv = document.getElementById('anomaly-results');
+
+            if (!resultsDiv || resultsDiv.textContent.includes("Click \"Detect Anomalies\"")) {
+                alert("There are no anomaly results to analyze. Please run a detection first.");
+                return;
+            }
+
+            // Show loading state in modal
+            modalBody.innerHTML = `<div class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">Analyzing anomaly report with AI...</p></div>`;
+            modal.show();
+
+            const prompt = `You are a cybersecurity expert. Please analyze the following anomaly detection report and explain it in simple terms. Describe the potential risks and what the user should do next.
+
+Report:
+---
+${resultsDiv.innerText}
+---
+`;
+
+            await sendToAi(prompt, modalBody);
+        }
+
+        async function getAiHelpForScan() {
+            const modal = new bootstrap.Modal(document.getElementById('aiHelpModal'));
+            const modalBody = document.getElementById('aiHelpModalBody');
+            const hostInfo = document.getElementById('scan-host-info').innerText;
+            const tableRows = document.querySelectorAll('#scan-results-table tbody tr');
+
+            if (tableRows.length === 0 || (tableRows.length === 1 && tableRows[0].textContent.includes("Click \"Run Scan\""))) {
+                alert("There are no scan results to analyze. Please run a scan first.");
+                return;
+            }
+
+            // Show loading state in modal
+            modalBody.innerHTML = `<div class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">Analyzing scan results with AI...</p></div>`;
+            modal.show();
+
+            let scanData = `Host Info: ${hostInfo}\n\nOpen Ports:\n`;
+            tableRows.forEach(row => {
+                const cells = row.querySelectorAll('td');
+                if (cells.length > 2) { // Ensure it's a data row
+                    scanData += `Port: ${cells[0].textContent}, Service: ${cells[1].textContent}, Version: ${cells[2].textContent}\n`;
+                }
+            });
+
+            const prompt = `You are a cybersecurity expert. Please analyze the following Nmap scan results. Explain what the open ports and services mean in simple terms. Highlight any services that are commonly targeted by attackers or might be misconfigured. Provide clear, actionable recommendations.
+
+Scan Results:
+---
+${scanData}
+---
+`;
+            await sendToAi(prompt, modalBody);
+        }
+
+        async function sendToAi(prompt, modalBodyElement) {
+            try {
+                const response = await fetch('/api/ai-help', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ logs: prompt }) // Re-using the 'logs' key for the prompt
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || 'The AI assistant failed to respond.');
+                modalBodyElement.innerHTML = result.explanation.replace(/\n/g, '<br>');
+            } catch (error) {
+                console.error("AI Help Error:", error);
+                modalBodyElement.innerHTML = `<div class="alert alert-danger"><strong>Error:</strong> Could not get analysis from the AI assistant. ${error.message}</div>`;
             }
         }
 

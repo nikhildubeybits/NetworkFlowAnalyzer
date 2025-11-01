@@ -1,8 +1,9 @@
 # modules/anomaly_detection.py
 from collections import defaultdict
 
-# Whitelisted IPs will be ignored by the anomaly detector
-whitelisted_ips = set()
+# Blocklisted IPs will be ignored by the anomaly detector to prevent repeat alerts
+# This acts as a simple, in-memory blocklist.
+blocklisted_ips = set()
 
 # Define thresholds for anomaly detection. These can be tuned.
 PORT_SCAN_THRESHOLD = 10  # More than 10 unique ports from one source to one dest.
@@ -27,8 +28,8 @@ def detect_anomalies(packets_to_analyze):
         dest_ip = packet.get('dest')
         dest_port = packet.get('dport')
 
-        # Ignore whitelisted IPs
-        if not src_ip or src_ip == 'N/A' or src_ip in whitelisted_ips:
+        # Ignore packets from blocklisted IPs or invalid source IPs
+        if not src_ip or src_ip == 'N/A' or src_ip in blocklisted_ips:
             continue
 
         source_ip_counts[src_ip] += 1
@@ -61,3 +62,9 @@ def detect_anomalies(packets_to_analyze):
             })
 
     return anomalies
+
+def add_to_blocklist(ip_address):
+    """
+    Adds an IP address to the in-memory blocklist.
+    """
+    blocklisted_ips.add(ip_address)
