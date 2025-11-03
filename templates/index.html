@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
     <style>
         :root {
             --primary-color: #1a202c;
@@ -187,6 +188,12 @@
             border-top: 1px solid var(--secondary-color);
         }
 
+        #network-graph-container {
+            width: 100%;
+            height: 500px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background-color: rgba(26, 32, 44, 0.5);
+        }
     </style>
 </head>
 <body>
@@ -199,7 +206,10 @@
                     <p class="lead mb-0">Real-time network monitoring and threat detection</p>
                 </div>
                 <div class="col-md-4 text-md-end">
-                    <a href="/schedule" class="btn btn-light"><i class="bi bi-clock-history"></i> Schedule Capture</a>
+                    <div class="d-flex gap-2 justify-content-end">
+                        <a href="/schedule" class="btn btn-light"><i class="bi bi-clock-history"></i> Schedule Capture</a>
+                        <a href="/logout" class="btn btn-outline-danger"><i class="bi bi-box-arrow-right"></i> Logout</a>
+                    </div>
                 </div>
             </div>
         </div>
@@ -222,12 +232,13 @@
                             <button class="btn btn-danger btn-module" onclick="resetCapture()"><i class="bi bi-arrow-counterclockwise"></i> Reset</button>
                             <button class="btn btn-info btn-module" onclick="printLogs()"><i class="bi bi-file-earmark-text"></i> Print Logs</button>
                             <button class="btn btn-light btn-module" onclick="toggleDetails()"><i class="bi bi-arrows-angle-expand"></i> Toggle Details</button>
-                            <button id="graph-toggle-btn" class="btn btn-secondary btn-module" onclick="toggleGraph()"><i class="bi bi-bar-chart-line"></i> Show Graph</button>
+                            <button id="view-toggle-btn" class="btn btn-secondary btn-module" onclick="toggleCaptureView()"><i class="bi bi-diagram-3"></i> Show Graph</button>
                             <button id="ai-help-btn" class="btn btn-primary btn-module" onclick="getAiHelp()"><i class="bi bi-robot"></i> Analyze with AI</button>
                         </div>
 
                         <h5 class="mt-4">Captured Packets</h5>
-                        <div class="table-responsive">
+                        <!-- Table View -->
+                        <div id="capture-table-container" class="table-responsive">
                             <table class="results-table" id="capture-table">
                                 <thead>
                                     <tr>
@@ -242,11 +253,9 @@
                             </table>
                         </div>
 
-                        <!-- IP Address Distribution Chart (Initially Hidden) -->
-                        <div id="ip-chart-container" class="mt-4" style="display: none;">
-                            <h5 class="mb-3">Source IP Traffic Distribution</h5>
-                            <div style="position: relative; height:400px"><canvas id="ipDistributionChart"></canvas></div>
-                        </div>
+                        <!-- Graph View (Initially Hidden) -->
+                        <div id="network-graph-container" class="mt-4" style="display: none;"></div>
+
                     </div>
                 </div>
             </div>
@@ -264,6 +273,7 @@
                         <p>Analyze network traffic to detect suspicious patterns and potential threats.</p>
                         <div class="d-flex gap-2 flex-wrap">
                             <button class="btn btn-warning btn-module" onclick="detectAnomalies()"><i class="bi bi-search"></i> Detect Anomalies</button>
+                            <button class="btn btn-info btn-module" onclick="updateThreatIntel()"><i class="bi bi-cloud-download"></i> Update Threat Intel</button>
                             <button id="ai-anomaly-btn" class="btn btn-primary btn-module" onclick="getAiHelpForAnomalies()" disabled><i class="bi bi-robot"></i> Analyze with AI</button>
                         </div>
                         
@@ -396,6 +406,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        let networkGraph = null; // To hold the network graph instance
         let ipChartInstance = null; // To hold the chart instance
         let isCapturing = false; // Global state to prevent multiple captures
 
@@ -416,14 +427,16 @@
         function resetCapture() {
             const tableBody = document.querySelector('#capture-table tbody');
             tableBody.innerHTML = '';
-            // Also hide and reset the chart
-            const chartContainer = document.getElementById('ip-chart-container');
-            chartContainer.style.display = 'none';
-            const graphBtn = document.getElementById('graph-toggle-btn');
-            graphBtn.innerHTML = '<i class="bi bi-bar-chart-line"></i> Show Graph';
-            if (ipChartInstance) {
-                ipChartInstance.destroy();
-                ipChartInstance = null;
+            // Also hide and reset the graph
+            const graphContainer = document.getElementById('network-graph-container');
+            const tableContainer = document.getElementById('capture-table-container');
+            graphContainer.style.display = 'none';
+            tableContainer.style.display = 'block';
+            const viewBtn = document.getElementById('view-toggle-btn');
+            viewBtn.innerHTML = '<i class="bi bi-diagram-3"></i> Show Graph';
+            if (networkGraph) {
+                networkGraph.destroy();
+                networkGraph = null;
             }
         }
 
@@ -459,8 +472,8 @@
                         tableBody.appendChild(row);
                     });
 
-                    // Update the IP distribution chart with the new data
-                    updateIpChart(packets);
+                    // NEW: Update the network graph with the new data
+                    updateNetworkGraph(packets);
                 }
             } catch (error) {
                 console.error("Failed to fetch packets:", error);
@@ -473,99 +486,74 @@
             }
         }
 
-        function updateIpChart(packets) {
-            const ipCounts = packets.reduce((acc, packet) => {
-                const srcIp = packet.src;
-                if (srcIp && srcIp !== 'N/A') {
-                    acc[srcIp] = (acc[srcIp] || 0) + 1;
-                }
-                return acc;
-            }, {});
+        function updateNetworkGraph(packets) {
+            const nodes = new vis.DataSet();
+            const edges = new vis.DataSet();
+            const ipSet = new Set();
+            const edgeMap = new Map();
 
-            // Sort IPs by count in descending order for a more meaningful bar chart
-            const sortedIps = Object.entries(ipCounts).sort(([,a],[,b]) => b-a);
-            
-            const labels = sortedIps.map(item => item[0]);
-            const data = sortedIps.map(item => item[1]);
+            packets.forEach(p => {
+                if (p.src && p.dest && p.src !== 'N/A' && p.dest !== 'N/A') {
+                    if (!ipSet.has(p.src)) { ipSet.add(p.src); nodes.add({ id: p.src, label: p.src }); }
+                    if (!ipSet.has(p.dest)) { ipSet.add(p.dest); nodes.add({ id: p.dest, label: p.dest }); }
 
-            const ctx = document.getElementById('ipDistributionChart').getContext('2d');
-
-            // Destroy the previous chart instance if it exists to prevent conflicts
-            if (ipChartInstance) {
-                ipChartInstance.destroy();
-            }
-
-            if (labels.length === 0) {
-                // Hide the chart container if there's no data
-                document.getElementById('ip-chart-container').style.display = 'none';
-                document.getElementById('graph-toggle-btn').innerHTML = '<i class="bi bi-bar-chart-line"></i> Show Graph';
-
-                // If there's no data, clear the canvas and show a message
-                ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-                ctx.fillStyle = 'rgba(226, 232, 240, 0.8)';
-                ctx.textAlign = 'center';
-                ctx.font = "16px 'Roboto Mono'";
-                ctx.fillText('No IP data to display. Run a capture.', ctx.canvas.width / 2, ctx.canvas.height / 2);
-                return;
-            }
-
-            ipChartInstance = new Chart(ctx, {
-                type: 'bar', // Changed to a bar chart for better readability
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Packet Count',
-                        data: data,
-                        backgroundColor: [ // A nice color palette
-                            'rgba(54, 162, 235, 0.7)',
-                            'rgba(255, 99, 132, 0.7)',
-                            'rgba(255, 206, 86, 0.7)',
-                            'rgba(75, 192, 192, 0.7)',
-                            'rgba(153, 102, 255, 0.7)',
-                            'rgba(255, 159, 64, 0.7)',
-                            'rgba(99, 255, 132, 0.7)'
-                        ],
-                        borderColor: 'rgba(255, 255, 255, 0.2)',
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    indexAxis: 'y', // Makes the bar chart horizontal
-                    scales: {
-                        x: {
-                            ticks: { color: 'rgba(226, 232, 240, 0.8)' },
-                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
-                        },
-                        y: {
-                            ticks: { color: 'rgba(226, 232, 240, 0.8)' },
-                            grid: { color: 'rgba(255, 255, 255, 0.1)' }
-                        }
-                    },
-                    plugins: {
-                        legend: { display: false }, // Legend is redundant for a single dataset
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    let label = context.dataset.label || '';
-                                    if (label) { label += ': '; }
-                                    if (context.parsed.x !== null) { label += context.parsed.x; }
-                                    return label;
-                                }
-                            }
-                        }
+                    // Aggregate edges to show connection strength
+                    const edgeId = [p.src, p.dest].sort().join('-');
+                    if (edgeMap.has(edgeId)) {
+                        edgeMap.get(edgeId).value++;
+                    } else {
+                        edgeMap.set(edgeId, { from: p.src, to: p.dest, value: 1 });
                     }
                 }
             });
+
+            edgeMap.forEach(edge => edges.add(edge));
+
+            const container = document.getElementById('network-graph-container');
+            const data = { nodes: nodes, edges: edges };
+            const options = {
+                nodes: {
+                    shape: 'dot',
+                    size: 16,
+                    font: { color: '#e2e8f0', size: 12 },
+                    borderWidth: 2,
+                    color: {
+                        border: '#26a0da',
+                        background: '#314755'
+                    }
+                },
+                edges: {
+                    width: 2,
+                    color: { color: '#4a5568' },
+                    smooth: { type: 'continuous' }
+                },
+                physics: {
+                    barnesHut: { gravitationalConstant: -30000 }
+                },
+                interaction: {
+                    tooltipDelay: 200,
+                    hideEdgesOnDrag: true
+                }
+            };
+
+            if (networkGraph) networkGraph.destroy();
+            networkGraph = new vis.Network(container, data, options);
         }
 
-        function toggleGraph() {
-            const chartContainer = document.getElementById('ip-chart-container');
-            const button = document.getElementById('graph-toggle-btn');
-            const isHidden = chartContainer.style.display === 'none';
-            chartContainer.style.display = isHidden ? 'block' : 'none';
-            button.innerHTML = isHidden ? '<i class="bi bi-bar-chart-line"></i> Hide Graph' : '<i class="bi bi-bar-chart-line"></i> Show Graph';
+        function toggleCaptureView() {
+            const tableContainer = document.getElementById('capture-table-container');
+            const graphContainer = document.getElementById('network-graph-container');
+            const button = document.getElementById('view-toggle-btn');
+            const isGraphHidden = graphContainer.style.display === 'none';
+            
+            if (!networkGraph && isGraphHidden) {
+                alert("Please run a capture first to generate graph data.");
+                return;
+            }
+            
+            graphContainer.style.display = isGraphHidden ? 'block' : 'none';
+            tableContainer.style.display = isGraphHidden ? 'none' : 'block';
+            button.innerHTML = isGraphHidden ? '<i class="bi bi-table"></i> Show Table' : '<i class="bi bi-diagram-3"></i> Show Graph';
         }
 
         function printLogs() {
@@ -610,12 +598,18 @@
                 const anomalies = await response.json();
 
                 if (anomalies.length > 0) {
-                    resultDiv.className = 'alert alert-danger mt-3';
+                    // Check if there are any Critical alerts to set the color
+                    const hasCritical = anomalies.some(a => a.severity === 'Critical');
+                    if (hasCritical) {
+                        resultDiv.className = 'alert alert-danger mt-3';
+                    } else {
+                        resultDiv.className = 'alert alert-warning mt-3';
+                    }
                     let html = '<strong><i class="bi bi-exclamation-octagon-fill"></i> Anomalies Detected!</strong><ul>';
                     anomalies.forEach(anomaly => { // Make IP clickable for Shodan lookup
                         html += `<li><strong>${anomaly.type} (${anomaly.severity}):</strong> ${anomaly.description.replace(anomaly.source_ip, `<a href="#" onclick="showShodanInfo('${anomaly.source_ip}')" class="alert-link">${anomaly.source_ip}</a>`)} <br>
                                  <small class="text-warning"><strong>Recommendation:</strong> <em>${anomaly.recommendation}</em></small>
-                                 <button class="btn btn-sm btn-outline-light ms-2" onclick="blockIp('${anomaly.source_ip}', this)">Block IP</button></li>`;
+                                 <button class="btn btn-sm btn-outline-danger ms-2" onclick="blockIp('${anomaly.source_ip}', this)">Block IP</button></li>`;
                     });
                     html += '</ul>';
                     resultDiv.innerHTML = html;
@@ -634,6 +628,28 @@
                 button.innerHTML = '<i class="bi bi-search"></i> Detect Anomalies';
             }
         }
+
+        async function updateThreatIntel() {
+            const button = document.querySelector('button[onclick="updateThreatIntel()"]');
+            button.disabled = true;
+            button.innerHTML = '<i class="bi bi-hourglass-split"></i> Updating...';
+
+            try {
+                const response = await fetch('/api/threat-intel/update', { method: 'POST' });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || 'Failed to update feed.');
+                }
+                alert(result.message);
+            } catch (error) {
+                console.error("Threat Intel Update Error:", error);
+                alert(`Error: ${error.message}`);
+            } finally {
+                button.disabled = false;
+                button.innerHTML = '<i class="bi bi-cloud-download"></i> Update Threat Intel';
+            }
+        }
+
 
         async function blockIp(ip, buttonElement) {
             if (!confirm(`Are you sure you want to add ${ip} to the blocklist? This will prevent it from triggering future anomaly alerts.`)) {

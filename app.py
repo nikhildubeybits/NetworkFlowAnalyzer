@@ -1,8 +1,11 @@
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, redirect, url_for, flash
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 import requests # Import the requests library
 import boto3
 from modules.packet_capture import start_capture as capture_packets
-from modules.anomaly_detection import detect_anomalies, blocklisted_ips, add_to_blocklist
+# Import all necessary functions from anomaly_detection module
+from modules.anomaly_detection import detect_anomalies, blocklisted_ips, add_to_blocklist, update_threat_feed
 from modules.nmap_scan import scan_network
 from modules.news_fetcher import get_cyber_news
 from modules.shodan_lookup import get_shodan_info
@@ -13,9 +16,35 @@ load_dotenv() # Load environment variables from .env file
 
 app = Flask(__name__)
 
-# --- API Routes ---
+# --- Authentication Setup ---
+app.config['SECRET_KEY'] = os.getenv("SECRET_KEY", "a_super_secret_key_for_development")
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login' # Redirect to /login if user is not authenticated
+
+class User(UserMixin):
+    def __init__(self, id, username, password):
+        self.id = id
+        self.username = username
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+# Hardcoded user database for demonstration. In a real app, use a database.
+users = {
+    "1": User(id="1", username="admin", password="password123"),
+    "2": User(id="2", username="netadmin", password="password456")
+}
+
+@login_manager.user_loader
+def load_user(user_id):
+    return users.get(user_id)
+
+# --- Protected API Routes ---
 
 @app.route('/api/capture', methods=['GET'])
+@login_required
 def api_start_capture():
     """API endpoint to capture network packets."""
     # You can adjust the interface and count as needed
@@ -29,6 +58,7 @@ def api_start_capture():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/anomalies', methods=['GET'])
+@login_required
 def api_detect_anomalies():
     """API endpoint to capture packets and detect anomalies."""
     try:
@@ -40,6 +70,7 @@ def api_detect_anomalies():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/blocklist/add', methods=['POST'])
+@login_required
 def api_add_to_blocklist():
     """API endpoint to add an IP to the blocklist."""
     data = request.get_json()
@@ -51,12 +82,25 @@ def api_add_to_blocklist():
     return jsonify({"message": f"IP {ip_to_block} added to blocklist.", "blocklist": list(blocklisted_ips)})
 
 @app.route('/api/shodan/<ip_address>', methods=['GET'])
+@login_required
 def api_shodan_lookup(ip_address):
     """API endpoint for Shodan IP lookup."""
     shodan_data = get_shodan_info(ip_address)
     return jsonify(shodan_data)
 
+@app.route('/api/threat-intel/update', methods=['POST'])
+@login_required
+def api_update_threat_intel():
+    """API endpoint to trigger an update of the threat intelligence feed."""
+    try:
+        count = update_threat_feed()
+        # The update_threat_feed function now reloads the list in memory automatically.
+        return jsonify({"message": f"Threat intelligence feed updated successfully. Loaded {count} malicious IPs."})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/scan', methods=['GET'])
+@login_required
 def api_run_scan():
     """API endpoint to run a network scan."""
     # For now, target is hardcoded to localhost, but we get profile from the request
@@ -73,6 +117,7 @@ def api_run_scan():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/news', methods=['GET'])
+@login_required
 def api_get_news():
     """API endpoint to fetch cybersecurity news."""
     api_key = os.getenv("NEWS_API_KEY")
@@ -80,6 +125,7 @@ def api_get_news():
     return jsonify(news_data)
 
 @app.route('/api/ai-help', methods=['POST'])
+@login_required
 def ai_help():
     """API endpoint to get AI analysis of logs from OpenRouter."""
     OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -125,8 +171,10 @@ Log Data:
         return jsonify({"error": f"Failed to communicate with the AI service: {e}"}), 502
 
 @app.route('/api/upload-to-s3', methods=['POST'])
+@login_required
 def upload_to_s3():
     """API endpoint to upload a file to AWS S3."""
+    import hashlib # Import the hashing library
     aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
     aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
     bucket_name = os.getenv("S3_BUCKET_NAME")
@@ -141,7 +189,21 @@ def upload_to_s3():
     if file.filename == '':
         return jsonify({"error": "No selected file."}), 400
 
+    # Get the client-side hash from the form data
+    client_hash = request.form.get('fileHash')
+    if not client_hash:
+        return jsonify({"error": "File hash is missing from the request."}), 400
+
     if file:
+        # --- Hashing Verification Step ---
+        # Read file content and calculate its hash
+        file_content = file.read()
+        server_hash = hashlib.sha256(file_content).hexdigest()
+
+        if server_hash != client_hash:
+            return jsonify({"error": "File integrity check failed. Hashes do not match."}), 400
+        
+        file.seek(0) # Reset file pointer to the beginning before uploading
         try:
             s3_client = boto3.client(
                 's3',
@@ -156,17 +218,48 @@ def upload_to_s3():
 
     return jsonify({"error": "An unknown error occurred."}), 500
 
-# --- Frontend Route ---
+# --- Protected Frontend Routes ---
 
 @app.route('/')
+@login_required
 def index():
     """Serves the main dashboard page."""
     return render_template('index.html')
 
 @app.route('/schedule')
+@login_required
 def schedule_page():
     """Serves the schedule capture page."""
     return render_template('schedule.html')
+
+# --- Add Login and Logout Logic ---
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        
+        # Find user by username
+        user_to_login = None
+        for user in users.values():
+            if user.username == username:
+                user_to_login = user
+                break
+        
+        if user_to_login and user_to_login.check_password(password):
+            login_user(user_to_login)
+            return redirect(url_for('index'))
+        else:
+            flash('Invalid username or password', 'danger')
+    return render_template('login.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
 
 if __name__ == '__main__':
     app.run(debug=True)

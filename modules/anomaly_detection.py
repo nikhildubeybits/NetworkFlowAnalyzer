@@ -1,6 +1,13 @@
 # modules/anomaly_detection.py
 from collections import defaultdict
+import requests
+import json
+import os
 
+# --- Threat Intelligence Logic (Moved Here) ---
+FEED_FILE_PATH = os.path.join(os.path.dirname(__file__), '..', 'threat_feed.json')
+THREAT_FEED_URLS = ["https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.txt"]
+# ---
 # Blocklisted IPs will be ignored by the anomaly detector to prevent repeat alerts
 # This acts as a simple, in-memory blocklist.
 blocklisted_ips = set()
@@ -8,6 +15,46 @@ blocklisted_ips = set()
 # Define thresholds for anomaly detection. These can be tuned.
 PORT_SCAN_THRESHOLD = 10  # More than 10 unique ports from one source to one dest.
 TRAFFIC_SPIKE_THRESHOLD = 30 # More than 30 packets from a single source in a single capture.
+
+def load_threat_feed():
+    """Loads the threat intelligence feed from the local file into a set for fast lookups."""
+    if not os.path.exists(FEED_FILE_PATH):
+        return set()
+    try:
+        with open(FEED_FILE_PATH, 'r') as f:
+            return set(json.load(f))
+    except (IOError, json.JSONDecodeError):
+        return set()
+
+def update_threat_feed():
+    """Downloads threat intelligence feeds, parses them, and saves them to a local file."""
+    all_malicious_ips = set()
+    for url in THREAT_FEED_URLS:
+        try:
+            response = requests.get(url, timeout=15)
+            response.raise_for_status()
+            lines = response.text.splitlines()
+            for line in lines:
+                if line.strip() and not line.startswith('#'):
+                    all_malicious_ips.add(line.strip())
+        except requests.RequestException as e:
+            print(f"Warning: Could not download threat feed from {url}. Error: {e}")
+            continue
+    try:
+        with open(FEED_FILE_PATH, 'w') as f:
+            json.dump(list(all_malicious_ips), f)
+        print(f"Successfully updated threat feed with {len(all_malicious_ips)} IPs.")
+        # After updating, we must reload the in-memory set
+        global THREAT_INTEL_IPS
+        THREAT_INTEL_IPS = all_malicious_ips
+        return len(all_malicious_ips)
+    except IOError as e:
+        print(f"Error: Could not write to threat feed file {FEED_FILE_PATH}. Error: {e}")
+        return 0
+
+# Load the threat intelligence feed on application startup
+THREAT_INTEL_IPS = load_threat_feed()
+print(f"Loaded {len(THREAT_INTEL_IPS)} IPs from local threat feed.")
 
 def detect_anomalies(packets_to_analyze):
     """
@@ -37,6 +84,25 @@ def detect_anomalies(packets_to_analyze):
         # For port scan detection, we need a source, destination, and destination port.
         if dest_ip and dest_port:
             port_scan_tracker[(src_ip, dest_ip)].add(dest_port)
+        
+        # 3. Check against Threat Intelligence Feed (New Feature)
+        if src_ip in THREAT_INTEL_IPS:
+            anomalies.append({
+                "type": "Threat Intel Match",
+                "source_ip": src_ip,
+                "description": f"Inbound traffic from a known malicious IP address ({src_ip}) was detected.",
+                "severity": "Critical",
+                "recommendation": f"This is a high-confidence alert. Immediately block this IP at your firewall and investigate all internal devices that communicated with it. <a href='https://www.sans.org/cyber-security-resources/threat-intelligence' target='_blank' rel='noopener noreferrer' class='alert-link'>Learn about Threat Intelligence.</a>"
+            })
+        
+        if dest_ip in THREAT_INTEL_IPS:
+            anomalies.append({
+                "type": "Threat Intel Match",
+                "source_ip": src_ip, # The internal IP making the connection
+                "description": f"Outbound traffic from {src_ip} to a known malicious IP address ({dest_ip}) was detected.",
+                "severity": "Critical",
+                "recommendation": f"An internal device ({src_ip}) may be compromised. Isolate this device from the network immediately and begin forensic analysis. Block the destination IP ({dest_ip}) at the firewall."
+            })
 
     # 2. Analyze aggregated data to find anomalies
     # a. Detect Traffic Spikes
