@@ -50,7 +50,11 @@ def start_capture(interface="Wi-Fi", packet_count=10):
     captured_packets = []
     try:
         # Sniff packets and call the callback for each one
-        sniff(iface=interface, prn=packet_callback, count=packet_count, store=False)
+        # We add a BPF filter to capture only IPv4 packets.
+        # The filter "ip" tells scapy to ignore non-IPv4 packets (like IPv6, ARP, etc.)
+        # This simplifies the output for analysis focused on IPv4.
+        bpf_filter = "ip"
+        sniff(iface=interface, prn=packet_callback, count=packet_count, store=False, filter=bpf_filter)
     except Exception as e:
         print(f"Error in capturing packets: {e}")
     return captured_packets

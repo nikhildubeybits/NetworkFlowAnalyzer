@@ -206,8 +206,10 @@
                     <p class="lead mb-0">Real-time network monitoring and threat detection</p>
                 </div>
                 <div class="col-md-4 text-md-end">
-                    <div class="d-flex gap-2 justify-content-end">
+                    <div class="d-flex gap-3 justify-content-end align-items-center">
+                        <span class="text-light"><i class="bi bi-person-circle"></i> {{ current_user.username }}</span>
                         <a href="/schedule" class="btn btn-light"><i class="bi bi-clock-history"></i> Schedule Capture</a>
+                        <button id="my-ip-btn" class="btn btn-info btn-module" onclick="showMyIp()"><i class="bi bi-geo-alt"></i> My IP</button>
                         <a href="/logout" class="btn btn-outline-danger"><i class="bi bi-box-arrow-right"></i> Logout</a>
                     </div>
                 </div>
@@ -298,12 +300,13 @@
                         
                         <div class="mb-3">
                             <label for="scan-profile" class="form-label">Scan Profile:</label>
-                            <select class="form-select" id="scan-profile">
-                                <option selected>Default Scan</option>
-                                <option>Quick Scan</option>
+                            <select class="form-select" id="scan-profile" onchange="updateScanDescription()">
+                                <option selected>Quick Scan</option>
                                 <option>Comprehensive Scan</option>
-                                <option>Stealth Scan</option>
                             </select>
+                            <div id="scan-profile-description" class="form-text mt-2 text-light">
+                                <!-- Description will be loaded here by JS -->
+                            </div>
                         </div>
                         
                         <div class="d-flex gap-2 flex-wrap">
@@ -471,8 +474,7 @@
                         row.innerHTML = `<td>${packet.src}</td><td>${packet.dest}</td><td>${packet.proto}</td><td class="packet-details">${packet.details}</td>`;
                         tableBody.appendChild(row);
                     });
-
-                    // NEW: Update the network graph with the new data
+                    // Update the dashboard graph
                     updateNetworkGraph(packets);
                 }
             } catch (error) {
@@ -494,8 +496,14 @@
 
             packets.forEach(p => {
                 if (p.src && p.dest && p.src !== 'N/A' && p.dest !== 'N/A') {
-                    if (!ipSet.has(p.src)) { ipSet.add(p.src); nodes.add({ id: p.src, label: p.src }); }
-                    if (!ipSet.has(p.dest)) { ipSet.add(p.dest); nodes.add({ id: p.dest, label: p.dest }); }
+                    if (!ipSet.has(p.src)) {
+                        ipSet.add(p.src);
+                        nodes.add({ id: p.src, label: p.src });
+                    }
+                    if (!ipSet.has(p.dest)) {
+                        ipSet.add(p.dest);
+                        nodes.add({ id: p.dest, label: p.dest });
+                    }
 
                     // Aggregate edges to show connection strength
                     const edgeId = [p.src, p.dest].sort().join('-');
@@ -931,12 +939,33 @@ ${scanData}
             }
         }
 
+        async function showMyIp() {
+            const button = document.getElementById('my-ip-btn');
+            button.disabled = true;
+            button.innerHTML = '<i class="bi bi-hourglass-split"></i> Fetching...';
+
+            try {
+                const response = await fetch('https://api.ipify.org?format=json');
+                if (!response.ok) {
+                    throw new Error('Could not fetch IP address.');
+                }
+                const data = await response.json();
+                alert(`Your public IP address is: ${data.ip}`);
+            } catch (error) {
+                console.error("Error fetching public IP:", error);
+                alert('Could not retrieve your public IP address.');
+            } finally {
+                button.disabled = false;
+                button.innerHTML = '<i class="bi bi-geo-alt"></i> My IP';
+            }
+        }
         // --- INITIALIZATION ---
 
         document.addEventListener('DOMContentLoaded', function() {
             console.log('Dashboard loaded. Performing initial capture.');
             startCapture(); // Perform initial capture on load
             fetchNews(); // Fetch latest news on load
+            updateScanDescription(); // Set initial scan description on load
         });
     </script>
 

@@ -37,13 +37,16 @@ NetworkFlowAnalyzer/
 │   ├── anomaly_detection.py  # Logic for detecting anomalies
 │   ├── nmap_scan.py          # Wrapper for Nmap scanning
 │   ├── news_fetcher.py       # Fetches cybersecurity news
-│   └── shodan_lookup.py      # Logic for Shodan IP lookups
+│   ├── shodan_lookup.py      # Logic for Shodan IP lookups
+│   └── __init__.py           # Makes 'modules' a Python package
 ├── templates/
 │   ├── index.html            # Main dashboard page
-│   └── schedule.html         # Page for scheduling captures
+│   ├── schedule.html         # Page for scheduling captures
+│   └── login.html            # User login page
 ├── static/
 │   ├── css/
 │   └── js/
+├── threat_feed.json        # Local cache for the threat intelligence feed
 ├── .env                    # Environment variables (API keys, etc.)
 └── requirements.txt        # Python dependencies
 ```

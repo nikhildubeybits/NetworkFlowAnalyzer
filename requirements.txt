@@ -1,7 +1,9 @@
-flask
+Flask
+Flask-Login
 python-dotenv
 requests
+boto3
 scapy
 python-nmap
 shodan
-plotly
+gunicorn
